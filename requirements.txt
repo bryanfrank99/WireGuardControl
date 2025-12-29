@@ -1,0 +1,4 @@
+flask
+routeros_api
+cryptography
+pyinstaller

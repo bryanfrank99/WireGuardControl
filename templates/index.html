@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard WireGuard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 style="display: flex; align-items: baseline; gap: 0.5rem;">
+                WireGuard Control
+                <span
+                    style="font-size: 0.8rem; color: var(--accent); font-weight: normal; border: 1px solid var(--accent); padding: 0.1rem 0.4rem; border-radius: 0.3rem;">v{{
+                    version }}</span>
+            </h1>
+            <div>
+                <span style="color: var(--text-secondary); margin-right: 1rem;">
+                    <i class="fas fa-server"></i> {{ session.get('host') }}
+                </span>
+                <a href="{{ url_for('logout') }}" class="btn-secondary"
+                    style="text-decoration: none; color: white; border-radius: 0.5rem;">
+                    <i class="fas fa-sign-out-alt"></i> Salir
+                </a>
+            </div>
+        </div>
+
+        <!-- Mensajes Flash -->
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div style="background: var(--accent); padding: 1rem; border-radius: 0.5rem; margin-bottom: 2rem;">
+            {% for message in messages %}
+            <div>{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <!-- Add Peer Form (Simple) -->
+        <div class="peer-card" style="margin-bottom: 2rem;">
+            <h3 style="margin-top: 0;">Añadir Nuevo Peer</h3>
+            <form action="{{ url_for('add_peer') }}" method="POST"
+                style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: end;">
+                <div>
+                    <label>Nombre (Comentario)</label>
+                    <input type="text" name="name" placeholder="Ej: Laptop Juan" required>
+                </div>
+                <!-- Public Key generada automáticamente -->
+                <div>
+                    <label>Allowed IPs</label>
+                    <input type="text" name="allowed_address" placeholder="10.0.0.2/32" required>
+                </div>
+                <button type="submit"><i class="fas fa-plus"></i> Añadir</button>
+            </form>
+        </div>
+
+        <div class="peer-grid">
+            {% for peer in peers %}
+            <div class="peer-card">
+                <div class="peer-header">
+                    <div class="peer-name">
+                        <i class="fas fa-user-shield"></i> {{ peer.get('comment', 'Sin Comentario') }}
+                    </div>
+                    <div class="peer-status">
+                        {% set peer_id = peer.get('id') or peer.get('.id') %}
+                        {% if peer_id %}
+                        <form action="{{ url_for('toggle_peer') }}" method="POST" style="display:inline;">
+                            <input type="hidden" name="peer_id" value="{{ peer_id }}">
+                            <input type="hidden" name="current_status" value="{{ peer.get('disabled') }}">
+                            <label class="switch"
+                                title="{% if peer.get('disabled') == 'true' %}Activar{% else %}Desactivar{% endif %}">
+                                <input type="checkbox" onchange="this.form.submit()" {% if peer.get('disabled')=='false'
+                                    %}checked{% endif %}>
+                                <span class="slider"></span>
+                            </label>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="peer-details">
+                    <div class="peer-detail-row">
+                        <strong>Interface:</strong> {{ peer.get('interface') }}
+                    </div>
+                    <div class="peer-detail-row">
+                        <strong>Allowed IPs:</strong> {{ peer.get('allowed-address') }}
+                    </div>
+                    <div class="peer-detail-row"
+                        style="font-family: monospace; font-size: 0.75rem; color: var(--text-secondary);">
+                        {{ peer.get('public-key') }}
+                    </div>
+                    {% if peer.get('last-handshake') %}
+                    <div class="peer-detail-row">
+                        <strong>Últ. Handshake:</strong> {{ peer.get('last-handshake') }}
+                    </div>
+                    {% endif %}
+                    <div class="peer-detail-row"
+                        style="display: flex; gap: 1rem; margin-top: 0.5rem; justify-content: space-around; background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 0.3rem;">
+                        <div title="Descarga (RX)">
+                            <i class="fas fa-arrow-down" style="color: #4ade80;"></i> {{ (peer.get('rx-byte') or
+                            peer.get('rx') or 0)|human_bytes }}
+                        </div>
+                        <div title="Subida (TX)">
+                            <i class="fas fa-arrow-up" style="color: #60a5fa;"></i> {{ (peer.get('tx-byte') or
+                            peer.get('tx') or 0)|human_bytes }}
+                        </div>
+                    </div>
+                </div>
+                <div class="peer-actions">
+                    {% set peer_id = peer.get('id') or peer.get('.id') %}
+                    {% if peer_id %}
+                    <div style="margin-bottom: 0.5rem;">
+                        <a href="{{ url_for('download_peer', peer_id=peer_id, mode='full') }}" class="btn-secondary"
+                            onclick="return confirm('¡Atención! Esto generará NUEVAS CLAVES para el cliente y dejará de funcionar la configuración anterior. ¿Deseas continuar?');"
+                            style="width: 100%; box-sizing: border-box; justify-content: center; background: var(--accent); color: white; border: none;">
+                            <i class="fas fa-download" style="margin-right: 0.5rem;"></i> Descargar
+                        </a>
+                    </div>
+                    <form action="{{ url_for('delete_peer') }}" method="POST"
+                        onsubmit="return confirm('¿Estás seguro de eliminar este peer?');"
+                        style="display: block; width: 100%;">
+                        <input type="hidden" name="peer_id" value="{{ peer_id }}">
+                        <button type="submit" class="btn-delete" style="width: 100%;"><i class="fas fa-trash"></i>
+                            Eliminar</button>
+                    </form>
+                    {% else %}
+                    <div style="color: var(--danger); font-size: 0.75rem;">
+                        <strong>Error: ID no encontrado.</strong>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary); padding: 3rem;">
+                No hay peers configurados o no se pudieron cargar.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if new_peer_id %}
+    <script>
+        // Auto-descargar configuración nueva
+        window.onload = function () {
+            window.location.href = "{{ url_for('download_peer', peer_id=new_peer_id, mode='full') }}";
+        }
+    </script>
+    {% endif %}
+</body>
+
+</html>
